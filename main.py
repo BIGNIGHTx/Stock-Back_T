@@ -1,6 +1,7 @@
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from sqlmodel import SQLModel, Session, create_engine, select
-from models import Product  # ดึงโครงสร้างมาจากไฟล์ models.py
+from models import Product, Sale  # ดึงโครงสร้างมาจากไฟล์ models.py
 from fastapi.middleware.cors import CORSMiddleware
 
 # 1. ตั้งค่า Database (SQLite)
@@ -78,3 +79,34 @@ def delete_product(product_id: int):
         session.delete(product)
         session.commit()
         return {"ok": True}
+
+# --- API สำหรับการขาย ---
+@app.post("/sales/")
+def create_sale(sale: Sale):
+    with Session(engine) as session:
+        # 1. ค้นหาสินค้าที่จะขาย
+        product = session.get(Product, sale.product_id)
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        
+        # 2. เช็คสต๊อกว่าพอไหม
+        if product.stock < sale.quantity:
+            raise HTTPException(status_code=400, detail="Not enough stock")
+        
+        # 3. ตัดสต๊อก
+        product.stock -= sale.quantity
+        session.add(product) # อัปเดตสินค้า
+        
+        # 4. บันทึกประวัติการขาย
+        sale.created_at = datetime.now() # ใส่วันที่ปัจจุบัน
+        session.add(sale) # สร้างบิลขาย
+        
+        session.commit()
+        session.refresh(sale)
+        return sale
+
+@app.get("/sales/")
+def read_sales():
+    with Session(engine) as session:
+        sales = session.exec(select(Sale)).all()
+        return sales
