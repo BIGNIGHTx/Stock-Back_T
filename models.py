@@ -8,6 +8,7 @@ class Product(SQLModel, table=True):
     sku: str
     category: str
     price: float
+    cost_price: float  # ราคาต้นทุน
     stock: int
     image: Optional[str] = None
 

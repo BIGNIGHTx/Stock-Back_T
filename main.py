@@ -1,8 +1,10 @@
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlmodel import SQLModel, Session, create_engine, select
 from models import Product, Sale  # ดึงโครงสร้างมาจากไฟล์ models.py
 from fastapi.middleware.cors import CORSMiddleware
+import traceback
 
 # 1. ตั้งค่า Database (SQLite)
 sqlite_file_name = "pos.db"
@@ -18,6 +20,20 @@ def create_db_and_tables():
 
 # 2. สร้าง App และตั้งค่า Event
 app = FastAPI()
+
+# เพิ่ม Exception Handler เพื่อ debug
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_detail = {
+        "error": str(exc),
+        "type": type(exc).__name__,
+        "traceback": traceback.format_exc()
+    }
+    print(f"❌ Error occurred: {error_detail}")  # พิมพ์ใน console
+    return JSONResponse(
+        status_code=500,
+        content=error_detail
+    )
 
 # เปิดให้ React เข้าถึงได้
 app.add_middleware(
@@ -38,6 +54,14 @@ def on_startup():
 # 3. เพิ่มสินค้าใหม่ (Create)
 @app.post("/products/")
 def create_product(product: Product):
+    # Validate required fields
+    if product.cost_price is None:
+        raise HTTPException(status_code=422, detail="cost_price is required")
+    if product.price is None:
+        raise HTTPException(status_code=422, detail="price is required")
+    if product.stock is None:
+        raise HTTPException(status_code=422, detail="stock is required")
+    
     with Session(engine) as session:
         session.add(product)
         session.commit()
@@ -60,7 +84,7 @@ def update_product(product_id: int, product_data: Product):
             raise HTTPException(status_code=404, detail="Product not found")
         
         # อัปเดตข้อมูล
-        product_data_dict = product_data.dict(exclude_unset=True)
+        product_data_dict = product_data.model_dump(exclude_unset=True)
         for key, value in product_data_dict.items():
             setattr(db_product, key, value)
             
