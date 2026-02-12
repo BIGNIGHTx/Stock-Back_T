@@ -134,3 +134,21 @@ def read_sales():
     with Session(engine) as session:
         sales = session.exec(select(Sale)).all()
         return sales
+
+# 7. ลบข้อมูลการขาย (Delete Sale)
+@app.delete("/sales/{sale_id}")
+def delete_sale(sale_id: int):
+    with Session(engine) as session:
+        sale = session.get(Sale, sale_id)
+        if not sale:
+            raise HTTPException(status_code=404, detail="Sale not found")
+        
+        # คืนสต๊อกสินค้า
+        product = session.get(Product, sale.product_id)
+        if product:
+             product.stock += sale.quantity
+             session.add(product)
+        
+        session.delete(sale)
+        session.commit()
+        return {"ok": True}
