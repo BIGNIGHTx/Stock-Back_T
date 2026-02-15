@@ -10,6 +10,7 @@ class Product(SQLModel, table=True):
     price: float
     cost_price: float  # ราคาต้นทุน
     stock: int
+    has_vat: bool = Field(default=False)
     image: Optional[str] = None
 
 class Sale(SQLModel, table=True):
