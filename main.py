@@ -65,8 +65,8 @@ class BrandCreate(BaseModel):
 DEFAULT_CATEGORIES = [
     {"name": "Tv",          "thai": "โทรทัศน์",          "image": "https://images.unsplash.com/photo-1717295248230-93ea71f48f92?w=600&auto=format&fit=crop&q=60"},
     {"name": "Fan",         "thai": "พัดลม",              "image": "https://media.istockphoto.com/id/1150705585/th/รูปถ่าย/ภาพระยะใกล้ของพัดลมตั้งพื้นไฟฟ้า.jpg?s=612x612&w=0&k=20&c=vX1hV1muUVa96MZpx4jJd6Ujl54pQX6Z8eIyyrdkLvw="},
-    {"name": "Refrigerator","thai": "ตู้เย็น",             "image": None},
-    {"name": "Washing Machine", "thai": "เครื่องซักผ้า",  "image": None},
+    {"name": "Refrigerator","thai": "ตู้เย็น",             "image": "https://images.unsplash.com/photo-1584568694244-14fbdf83bd30?w=600&auto=format&fit=crop&q=60"},
+    {"name": "Washing Machine", "thai": "เครื่องซักผ้า",  "image": "https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?w=600&auto=format&fit=crop&q=60"},
 ]
 
 DEFAULT_BRANDS = [
@@ -108,16 +108,32 @@ def on_startup():
     # สร้าง/อัปเดต tables ตาม model
     create_db_and_tables()
 
-    # Seed ข้อมูลเริ่มต้นถ้ายังไม่มี
+    # --- Sync categories from Products to Category table ---
     with Session(engine) as session:
+        # 1. Get unique categories currently used in products
+        product_cats = session.exec(select(Product.category).distinct()).all()
+        
+        # 2. Get existing categories in the Category table
         existing_cats = session.exec(select(Category)).all()
-        if not existing_cats:
-            for cat in DEFAULT_CATEGORIES:
-                session.add(Category(**cat))
-        existing_brands = session.exec(select(Brand)).all()
-        if not existing_brands:
-            for brand in DEFAULT_BRANDS:
-                session.add(Brand(**brand))
+        existing_names = {c.name: c for c in existing_cats}
+        
+        # 3. Ensure DEFAULT_CATEGORIES exist and have images
+        for d_cat in DEFAULT_CATEGORIES:
+            name = d_cat["name"]
+            if name in existing_names:
+                # Update image if it's missing or different (optional, but good for restoring defaults)
+                cat_obj = existing_names[name]
+                if not cat_obj.image or cat_obj.image != d_cat["image"]:
+                    cat_obj.image = d_cat["image"]
+                    session.add(cat_obj)
+            else:
+                session.add(Category(**d_cat))
+        
+        # 4. Add any other categories found in products that aren't in the table
+        for p_cat in product_cats:
+            if p_cat and p_cat not in existing_names and p_cat not in [d["name"] for d in DEFAULT_CATEGORIES]:
+                 session.add(Category(name=p_cat, thai=p_cat))
+                 
         session.commit()
 
 
@@ -253,9 +269,24 @@ def update_category(category_id: int, data: CategoryUpdate):
         db_cat = session.get(Category, category_id)
         if not db_cat:
             raise HTTPException(status_code=404, detail="Category not found")
+        
+        old_name = db_cat.name
         update_data = data.model_dump(exclude_unset=True)
+        
         for key, value in update_data.items():
             setattr(db_cat, key, value)
+            
+        new_name = db_cat.name
+        
+        # ถ้านามชื่อเปลี่ยน ให้ไปอัปเดตสินค้าทุกตัวที่ใช้ชื่อเดิม
+        if old_name != new_name:
+            products_to_update = session.exec(
+                select(Product).where(Product.category == old_name)
+            ).all()
+            for p in products_to_update:
+                p.category = new_name
+                session.add(p)
+                
         session.add(db_cat)
         session.commit()
         session.refresh(db_cat)
