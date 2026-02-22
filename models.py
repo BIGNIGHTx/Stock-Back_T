@@ -23,10 +23,10 @@ class Sale(SQLModel, table=True):
 
 class Category(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    name: str                          # ชื่อภาษาอังกฤษ (ใช้เป็น key)
-    name_th: Optional[str] = None      # ชื่อภาษาไทย
-    image: Optional[str] = None        # URL รูปภาพ
+    name: str                      # ชื่อภาษาอังกฤษ
+    thai: Optional[str] = None     # ชื่อภาษาไทย (ตรงกับ frontend field)
+    image: Optional[str] = None    # URL รูปภาพ
 
 class Brand(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    name: str                          # ชื่อแบรนด์
+    name: str                      # ชื่อแบรนด์

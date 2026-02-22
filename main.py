@@ -4,9 +4,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlmodel import SQLModel, Session, create_engine, select
 from pydantic import BaseModel
-from models import Product, Sale, Category, Brand  # ดึงโครงสร้างมาจากไฟล์ models.py
+from models import Product, Sale, Category, Brand
 from fastapi.middleware.cors import CORSMiddleware
 import traceback
+import sqlite3
 
 # 1. ตั้งค่า Database (SQLite)
 sqlite_file_name = "pos.db"
@@ -49,7 +50,12 @@ app.add_middleware(
 # --- Pydantic Schemas สำหรับ Category และ Brand ---
 class CategoryCreate(BaseModel):
     name: str
-    name_th: Optional[str] = None
+    thai: Optional[str] = None     # ชื่อภาษาไทย ตรงกับ frontend
+    image: Optional[str] = None
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    thai: Optional[str] = None
     image: Optional[str] = None
 
 class BrandCreate(BaseModel):
@@ -57,11 +63,10 @@ class BrandCreate(BaseModel):
 
 # ข้อมูล Category และ Brand เริ่มต้น
 DEFAULT_CATEGORIES = [
-    {"name": "Beverage",   "name_th": "เครื่องดื่ม",  "image": None},
-    {"name": "Snack",      "name_th": "ขนม",            "image": None},
-    {"name": "Dairy",      "name_th": "นม/โยเกิร์ต",   "image": None},
-    {"name": "Cleaning",   "name_th": "ของใช้ทำความสะอาด", "image": None},
-    {"name": "Noodle",     "name_th": "บะหมี่กึ่งสำเร็จรูป", "image": None},
+    {"name": "Tv",          "thai": "โทรทัศน์",          "image": "https://images.unsplash.com/photo-1717295248230-93ea71f48f92?w=600&auto=format&fit=crop&q=60"},
+    {"name": "Fan",         "thai": "พัดลม",              "image": "https://media.istockphoto.com/id/1150705585/th/รูปถ่าย/ภาพระยะใกล้ของพัดลมตั้งพื้นไฟฟ้า.jpg?s=612x612&w=0&k=20&c=vX1hV1muUVa96MZpx4jJd6Ujl54pQX6Z8eIyyrdkLvw="},
+    {"name": "Refrigerator","thai": "ตู้เย็น",             "image": None},
+    {"name": "Washing Machine", "thai": "เครื่องซักผ้า",  "image": None},
 ]
 
 DEFAULT_BRANDS = [
@@ -74,20 +79,47 @@ DEFAULT_BRANDS = [
 # เมื่อโปรแกรมเริ่มทำงาน ให้สร้าง Database ทันที
 @app.on_event("startup")
 def on_startup():
+    # --- Auto-Migration: rename name_th → thai ถ้ายังเป็น column เก่า ---
+    try:
+        con = sqlite3.connect(sqlite_file_name)
+        cur = con.cursor()
+        tables = [t[0] for t in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        if "category" in tables:
+            cols = [row[1] for row in cur.execute("PRAGMA table_info(category)").fetchall()]
+            if "name_th" in cols and "thai" not in cols:
+                print("🔄 Migrating: rename name_th → thai in category table...")
+                cur.execute("""
+                    CREATE TABLE category_new (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        thai TEXT,
+                        image TEXT
+                    )
+                """)
+                cur.execute("INSERT INTO category_new (id, name, thai, image) SELECT id, name, name_th, image FROM category")
+                cur.execute("DROP TABLE category")
+                cur.execute("ALTER TABLE category_new RENAME TO category")
+                con.commit()
+                print("✅ Migration เสร็จแล้ว: name_th → thai")
+        con.close()
+    except Exception as e:
+        print(f"⚠️ Migration error (ข้ามได้): {e}")
+
+    # สร้าง/อัปเดต tables ตาม model
     create_db_and_tables()
+
     # Seed ข้อมูลเริ่มต้นถ้ายังไม่มี
     with Session(engine) as session:
-        # Seed Categories
         existing_cats = session.exec(select(Category)).all()
         if not existing_cats:
             for cat in DEFAULT_CATEGORIES:
                 session.add(Category(**cat))
-        # Seed Brands
         existing_brands = session.exec(select(Brand)).all()
         if not existing_brands:
             for brand in DEFAULT_BRANDS:
                 session.add(Brand(**brand))
         session.commit()
+
 
 # --- API ENDPOINTS (จุดรับ-ส่งข้อมูล) ---
 
@@ -204,17 +236,30 @@ def read_categories():
 @app.post("/categories/")
 def create_category(data: CategoryCreate):
     with Session(engine) as session:
-        # ตรวจสอบว่าชื่อซ้ำไหม
         existing = session.exec(
             select(Category).where(Category.name == data.name)
         ).first()
         if existing:
             raise HTTPException(status_code=400, detail=f"Category '{data.name}' already exists")
-        cat = Category(name=data.name, name_th=data.name_th, image=data.image)
+        cat = Category(name=data.name, thai=data.thai, image=data.image)
         session.add(cat)
         session.commit()
         session.refresh(cat)
         return cat
+
+@app.put("/categories/{category_id}")
+def update_category(category_id: int, data: CategoryUpdate):
+    with Session(engine) as session:
+        db_cat = session.get(Category, category_id)
+        if not db_cat:
+            raise HTTPException(status_code=404, detail="Category not found")
+        update_data = data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_cat, key, value)
+        session.add(db_cat)
+        session.commit()
+        session.refresh(db_cat)
+        return db_cat
 
 @app.delete("/categories/{category_id}")
 def delete_category(category_id: int):
