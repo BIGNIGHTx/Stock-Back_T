@@ -20,3 +20,13 @@ class Sale(SQLModel, table=True):
     quantity: int
     total_price: float
     created_at: datetime = Field(default_factory=datetime.now)
+
+class Category(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str                          # ชื่อภาษาอังกฤษ (ใช้เป็น key)
+    name_th: Optional[str] = None      # ชื่อภาษาไทย
+    image: Optional[str] = None        # URL รูปภาพ
+
+class Brand(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str                          # ชื่อแบรนด์

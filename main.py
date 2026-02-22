@@ -1,8 +1,10 @@
 from datetime import datetime
+from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlmodel import SQLModel, Session, create_engine, select
-from models import Product, Sale  # ดึงโครงสร้างมาจากไฟล์ models.py
+from pydantic import BaseModel
+from models import Product, Sale, Category, Brand  # ดึงโครงสร้างมาจากไฟล์ models.py
 from fastapi.middleware.cors import CORSMiddleware
 import traceback
 
@@ -44,10 +46,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Pydantic Schemas สำหรับ Category และ Brand ---
+class CategoryCreate(BaseModel):
+    name: str
+    name_th: Optional[str] = None
+    image: Optional[str] = None
+
+class BrandCreate(BaseModel):
+    name: str
+
+# ข้อมูล Category และ Brand เริ่มต้น
+DEFAULT_CATEGORIES = [
+    {"name": "Beverage",   "name_th": "เครื่องดื่ม",  "image": None},
+    {"name": "Snack",      "name_th": "ขนม",            "image": None},
+    {"name": "Dairy",      "name_th": "นม/โยเกิร์ต",   "image": None},
+    {"name": "Cleaning",   "name_th": "ของใช้ทำความสะอาด", "image": None},
+    {"name": "Noodle",     "name_th": "บะหมี่กึ่งสำเร็จรูป", "image": None},
+]
+
+DEFAULT_BRANDS = [
+    {"name": "Lay's"},
+    {"name": "Nestle"},
+    {"name": "Unilever"},
+    {"name": "Mama"},
+]
+
 # เมื่อโปรแกรมเริ่มทำงาน ให้สร้าง Database ทันที
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
+    # Seed ข้อมูลเริ่มต้นถ้ายังไม่มี
+    with Session(engine) as session:
+        # Seed Categories
+        existing_cats = session.exec(select(Category)).all()
+        if not existing_cats:
+            for cat in DEFAULT_CATEGORIES:
+                session.add(Category(**cat))
+        # Seed Brands
+        existing_brands = session.exec(select(Brand)).all()
+        if not existing_brands:
+            for brand in DEFAULT_BRANDS:
+                session.add(Brand(**brand))
+        session.commit()
 
 # --- API ENDPOINTS (จุดรับ-ส่งข้อมูล) ---
 
@@ -152,3 +192,68 @@ def delete_sale(sale_id: int):
         session.delete(sale)
         session.commit()
         return {"ok": True}
+
+# --- API สำหรับ Category ---
+
+@app.get("/categories/")
+def read_categories():
+    with Session(engine) as session:
+        categories = session.exec(select(Category)).all()
+        return categories
+
+@app.post("/categories/")
+def create_category(data: CategoryCreate):
+    with Session(engine) as session:
+        # ตรวจสอบว่าชื่อซ้ำไหม
+        existing = session.exec(
+            select(Category).where(Category.name == data.name)
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Category '{data.name}' already exists")
+        cat = Category(name=data.name, name_th=data.name_th, image=data.image)
+        session.add(cat)
+        session.commit()
+        session.refresh(cat)
+        return cat
+
+@app.delete("/categories/{category_id}")
+def delete_category(category_id: int):
+    with Session(engine) as session:
+        cat = session.get(Category, category_id)
+        if not cat:
+            raise HTTPException(status_code=404, detail="Category not found")
+        session.delete(cat)
+        session.commit()
+        return {"ok": True, "deleted_id": category_id}
+
+# --- API สำหรับ Brand ---
+
+@app.get("/brands/")
+def read_brands():
+    with Session(engine) as session:
+        brands = session.exec(select(Brand)).all()
+        return brands
+
+@app.post("/brands/")
+def create_brand(data: BrandCreate):
+    with Session(engine) as session:
+        existing = session.exec(
+            select(Brand).where(Brand.name == data.name)
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Brand '{data.name}' already exists")
+        brand = Brand(name=data.name)
+        session.add(brand)
+        session.commit()
+        session.refresh(brand)
+        return brand
+
+@app.delete("/brands/{brand_id}")
+def delete_brand(brand_id: int):
+    with Session(engine) as session:
+        brand = session.get(Brand, brand_id)
+        if not brand:
+            raise HTTPException(status_code=404, detail="Brand not found")
+        session.delete(brand)
+        session.commit()
+        return {"ok": True, "deleted_id": brand_id}
