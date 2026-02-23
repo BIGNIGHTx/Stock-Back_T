@@ -238,6 +238,40 @@ def read_categories():
     with Session(engine) as session:
         return session.exec(select(Category)).all()
 
+# --- DASHBOARD ---
+@app.get("/dashboard/inventory_by_category")
+def inventory_by_category():
+    with Session(engine) as session:
+        # ดึงหมวดหมู่ทั้งหมด
+        categories = session.exec(select(Category)).all()
+        # ดึงสินค้าทั้งหมด
+        products = session.exec(select(Product)).all()
+        # สรุปจำนวนสินค้าคงเหลือแยกตามหมวดหมู่
+        result = []
+        for cat in categories:
+            cat_products = [p for p in products if p.category == cat.name]
+            total_stock = sum(p.stock for p in cat_products if p.stock is not None)
+            result.append({
+                "category_id": cat.id,
+                "category_name": cat.name,
+                "thai": cat.thai,
+                "image": cat.image,
+                "total_stock": total_stock,
+                "product_count": len(cat_products),
+                "products": [
+                    {
+                        "id": p.id,
+                        "name": p.name,
+                        "stock": p.stock,
+                        "price": p.price,
+                        "cost_price": p.cost_price,
+                        "has_vat": p.has_vat,
+                        "image": p.image
+                    } for p in cat_products
+                ]
+            })
+        return result
+
 @app.post("/categories/")
 def create_category(data: CategoryCreate):
     with Session(engine) as session:
