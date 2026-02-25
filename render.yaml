@@ -1,0 +1,13 @@
+# render.yaml
+# Render.com deployment configuration file
+# This file is optional. If omitted, Render will try to auto-detect your settings.
+# For a basic Python web service, only the start command is required.
+
+services:
+  - type: web
+    name: backend
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port 10000"
+    plan: free
+    autoDeploy: true
