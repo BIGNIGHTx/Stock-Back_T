@@ -1,4 +1,20 @@
 # --- ROOT ENDPOINT ---
+from fastapi import FastAPI
+from datetime import datetime
+from typing import Optional
+from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
+from sqlmodel import SQLModel, Session, create_engine, select
+from pydantic import BaseModel
+from models import Product, Sale, Category, Brand
+from fastapi.middleware.cors import CORSMiddleware
+import traceback
+import sqlite3
+
+app = FastAPI()
+
+# --- ROOT ENDPOINT ---
+
 @app.get("/")
 def root():
     return {"message": "Stock API is running"}
