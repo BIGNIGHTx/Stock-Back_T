@@ -1,3 +1,7 @@
+# --- ROOT ENDPOINT ---
+@app.get("/")
+def root():
+    return {"message": "Stock API is running"}
 from datetime import datetime
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
