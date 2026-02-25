@@ -2,9 +2,18 @@
 @app.get("/")
 def root():
     return {"message": "Stock API is running"}
+
+from fastapi import FastAPI
+
+app = FastAPI()   # ต้องมีบรรทัดนี้ก่อนเสมอ
+
+@app.get("/")
+def root():
+    return {"message": "Stock API is running"}
+
 from datetime import datetime
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlmodel import SQLModel, Session, create_engine, select
 from pydantic import BaseModel
